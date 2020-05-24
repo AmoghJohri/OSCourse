@@ -397,6 +397,11 @@ int main()
                             continue;
                         memset(read_buffer, 0, sizeof(read_buffer));
                         recv(sd, read_buffer, sizeof(read_buffer), 0);
+                        if(atoi(read_buffer) == 1)
+                        {
+                            write(1, "Invalid Account Id\n", strlen("Invalid Account Id\n"));
+                            continue;
+                        }
                         write(1, read_buffer, sizeof(read_buffer));
                         memset(write_buffer, 0, sizeof(write_buffer));
                         read(0, write_buffer, sizeof(write_buffer));

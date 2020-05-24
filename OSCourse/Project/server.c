@@ -945,15 +945,32 @@ void* login(void* nsd_) // this is the main function, everything that the server
                             }
                             (new->id)[i] = atoi(read_buffer);
                         }
+                        int counter = 0;
+                        while((new->id)[counter] != 0)
+                        {
+                            int counter2 = counter + 1;
+                            while((new->id)[counter2] != 0)
+                            {
+                                if((new->id)[counter2] == (new->id)[counter])
+                                    tag = 1;
+                                counter2 ++;
+                            }
+                            counter ++;
+                        }
                         if(tag == 1)
+                        {
+                            memset(write_buffer, 0, sizeof(write_buffer));
+                            strcpy(write_buffer, "1");
+                            send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                             continue;
+                        }
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the password: ");
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                         memset(read_buffer, 0, sizeof(read_buffer));
                         recv(nsd, read_buffer, sizeof(read_buffer), 0);
                         strcpy(new->password,read_buffer);
-                        int counter = 0;
+                        counter = 0;
                         while((new->password)[counter] != 0)
                         {
                             if((new->password)[counter] == 10)
@@ -995,17 +1012,18 @@ void* login(void* nsd_) // this is the main function, everything that the server
                     }
                     else if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to close the server
                     {
-                        close(nsd);
                         int sd = socket(AF_INET, SOCK_STREAM, 0);
                         struct in_addr inadr;
                         struct sockaddr_in serv, cli;
                         serv.sin_family = AF_INET;
+                        inadr.s_addr = INADDR_ANY;
                         serv.sin_addr = (inadr);
                         serv.sin_port = htons(6000);
                         server_on = 0;
                         int val = connect(sd, (void*)&serv, sizeof(cli));
                         if(val == -1)
                             server_on = 1;
+                        close(nsd);
                         close_con(1);
                         return NULL;
                     }
