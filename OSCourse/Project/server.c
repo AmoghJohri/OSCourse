@@ -24,7 +24,7 @@ pthread_mutex_t mutex_lock2;
 // no lock has been defined on server_on global variable as only the admin has access to it
 int server_on               = 1; // this indicates whether the server is switched on of off; if server_on == 0, the server does not accept any further connections
 
-int number_of_accounts      = -1; // this indicates the total number of accounts present in the database
+int number_of_accounts      = 0;
 int open_connections[1024]  = {0}; // this indicates the account id's which are logged in, a total of 1024 connections are permitted here
 
 // auxillary functions - do not provide much direct functionality to the project
@@ -107,11 +107,11 @@ void pds_init(void) // this initializes our personal data-store. It creates an a
     pthread_mutex_lock(&mutex_lock2); 
     number_of_accounts = pointer->balance - 1;
     pthread_mutex_unlock(&mutex_lock2); 
-    free(pointer);
+    
     if(lseek(fd, 0, SEEK_SET) != 0)
     {
         write(2, "Error: Lseek Failed!\n", strlen("Error: Lseek Failed!\n"));
-        exit(-1);
+        exit(1);
     }
     close(fd);
     return ;
@@ -184,10 +184,10 @@ void get_info(unsigned int id, account_t** pointer) // takes in the account id a
     fcntl (fd, F_SETLKW, &lock);
 
     int tag = 0;
-
-    for(int i = 0; i < number_of_accounts; i++)
+    int iter_total = number_of_accounts + 1;
+    for(int i = 0; i < iter_total; i++)
     {
-        if(tag != 0) // already found the accont so we do not want to be reading any further
+        if(tag != 0) // already found the account so we do not want to be reading any further
             break;
 
         if(read(fd, *pointer, SIZE) != SIZE)
@@ -203,14 +203,18 @@ void get_info(unsigned int id, account_t** pointer) // takes in the account id a
             {
                 (*pointer)->this_id = arr[counter];
                 tag = 1;
+                counter ++;
                 break;
             }
             counter ++;
         }
+        if(counter == 0)    iter_total ++;
 
     }
     if(tag == 0)
-        (*pointer)->this_id = 0;
+    {
+        memset(*pointer, 0, sizeof(*pointer));
+    }
 
     // unlocking the file
     lock.l_type = F_UNLCK;
@@ -239,15 +243,15 @@ int augment_balance(float new, int id) // takes in the amount which is to be add
     fcntl (fd, F_SETLKW, &lock);
 
     int tag = 0;
-
-    for(int i = 0; i < number_of_accounts; i++)
+    int iter_total = number_of_accounts + 1;
+    for(int i = 0; i < iter_total; i++)
     {
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
         if(read(fd, pointer, SIZE) != SIZE)
         {
-            free(pointer);
+            
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -263,20 +267,20 @@ int augment_balance(float new, int id) // takes in the amount which is to be add
                 else
                     pointer->balance = pointer->balance + new;
                 tag = 1;
+                counter ++;
                 break;
             }
             counter ++;
         }
+        if(counter == 0) iter_total ++;
 
     }
     if(tag == 0) // account was not found
-    {
-        free(pointer);
+    {  
         return -1;
     }
     else if(pointer->this_id == 0) // insufficient balance
-    {
-        free(pointer);
+    {   
         return -2;
     }
     else   
@@ -301,7 +305,7 @@ int augment_balance(float new, int id) // takes in the amount which is to be add
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
-    free(pointer);
+    
     // close(fd); we will not be doing this as this is a multithreader program
     return 0;
 }
@@ -314,7 +318,7 @@ int change_password(char* new, int id) // takes the new password and the associa
 
     int fd = open("pds.bin", O_RDWR); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
-      free(pointer);
+      
       write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
       exit(1);
     }
@@ -326,15 +330,15 @@ int change_password(char* new, int id) // takes the new password and the associa
     fcntl (fd, F_SETLKW, &lock);
 
     int tag = 0;
-
-    for(int i = 0; i < number_of_accounts; i++)
+    int iter_total = number_of_accounts + 1;
+    for(int i = 0; i < iter_total; i++)
     {
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
         if(read(fd, pointer, SIZE) != SIZE)
         {
-            free(pointer);
+            
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -347,15 +351,16 @@ int change_password(char* new, int id) // takes the new password and the associa
                 pointer->this_id = id;
                 strcpy(pointer->password, new);
                 tag = 1;
+                counter ++;
                 break;
             }
             counter ++;
         }
+        if(counter == 0) iter_total ++;
 
     }
     if(tag == 0) // the account was not found
-    {
-        free(pointer);
+    {   
         return -1;
     }
     else
@@ -380,7 +385,7 @@ int change_password(char* new, int id) // takes the new password and the associa
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
-    free(pointer);
+    
     // close(fd); we will not be doing this as this is a multithreader program
     return 0;
 }
@@ -393,7 +398,7 @@ int delete_account(int id) // takes an id and deletes the account corresponding 
 
     int fd = open("pds.bin", O_RDWR); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
-      free(pointer);
+      
       write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
       exit(1);
     }
@@ -405,15 +410,15 @@ int delete_account(int id) // takes an id and deletes the account corresponding 
     fcntl (fd, F_SETLKW, &lock);
 
     int tag = 0;
-
-    for(int i = 0; i < number_of_accounts; i++)
+    int iter_total = number_of_accounts + 1;
+    for(int i = 0; i < iter_total; i++)
     {
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
         if(read(fd, pointer, SIZE) != SIZE)
         {
-            free(pointer);
+            
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -425,16 +430,17 @@ int delete_account(int id) // takes an id and deletes the account corresponding 
             {
                 pointer->this_id = id;
                 tag = 1;
+                counter ++;
                 break;
             }
             counter ++;
         }
+        if(counter == 0) iter_total ++;
 
     }
     if(tag == 0) // account was not found 
     {
-        free(pointer);
-        return -1;
+        return 1;
     }
     else
     {
@@ -449,17 +455,39 @@ int delete_account(int id) // takes an id and deletes the account corresponding 
             lock2.l_start = pos;         // starting offset is zero
             lock2.l_len = SIZE; 
             fcntl (fd, F_SETLKW, &lock2);
-            memset(pointer->id, 0, sizeof(pointer->id));
+            memset(pointer, 0, sizeof(pointer));
             write(fd, pointer, SIZE);
             // unlocking the file
             lock2.l_type = F_UNLCK;
             fcntl (fd, F_SETLKW, &lock2);
+            pthread_mutex_lock(&mutex_lock2); 
+            number_of_accounts --;
+            pthread_mutex_unlock(&mutex_lock2);
+
+            lseek(fd, 0, SEEK_SET);
+            read(fd, pointer, SIZE);
+            pointer->balance = number_of_accounts + 1;
+            lseek(fd, 0, SEEK_SET);
+
+            memset (&lock2, 0, sizeof(lock));
+            lock2.l_type = F_WRLCK;
+            /* Place a write lock on the file. */
+            lock2.l_whence = SEEK_SET; // offset base is start of the file
+            lock2.l_start = 0;         // starting offset is zero
+            lock2.l_len = SIZE;
+            fcntl (fd, F_SETLKW, &lock2);
+            write(fd, pointer, SIZE);
+            // unlocking the file
+            lock2.l_type = F_UNLCK;
+            fcntl (fd, F_SETLKW, &lock2);
+            
+
         }
     }
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
-    free(pointer);
+    
     // close(fd); we will not be doing this as this is a multithreader program
     return 0;
 }
@@ -484,35 +512,46 @@ int add_account(account_t* new) // takes the account information and adds it int
 
     int tag = 0;
 
-    for(int i = 0; i < number_of_accounts; i++)
+    int iter_total = number_of_accounts + 1;
+    for(int i = 0; i < iter_total; i++)
     {
-        if(tag != 0) // already found the accont so we do not want to be reading any further
-            break;
-
         if(read(fd, pointer, SIZE) != SIZE)
-        {
-            free(pointer);
+        {  
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
-        if((pointer->id)[0] == 0)
+        unsigned int* arr = (pointer)->id;
+        int counter = 0;
+        while(arr[counter] != 0)
+        {
+            if(arr[counter] != 0)
+            {
+                tag = 1;
+                counter ++;
+                break;
+            }
+            counter ++;
+        }
+        if(counter == 0) // found a hole
         {
             tag = 1;
             break;
         }
     }
-
-    if(tag == 0) // there were no empty accounts found, hence, the account is being added to the end; There is no need for a write lock because no other account shall be looking in this space and only admin can add the account
+    struct flock lock2;
+    if(tag == 0) // there were no empty accounts found, hence, the account is being added to the end; 
     {
+         /* Initialize the flock structure. */
+        memset (&lock2, 0, sizeof(lock));
+        lock2.l_type = F_WRLCK;
+        /* Place a write lock on the file. */
+        lock2.l_whence = SEEK_SET; // offset base is start of the file
+        lock2.l_start = 0;         // starting offset is zero
+        lock2.l_len = SIZE; 
+        fcntl (fd, F_SETLKW, &lock2);
         write(fd, new, SIZE);
-        int pos = lseek(fd, 0, SEEK_SET);
-        read(fd, pointer, SIZE);
-        pointer->balance = pointer->balance + 1.;
-        pos = lseek(fd, 0, SEEK_SET);
-        write(fd, pointer, SIZE);
-        pthread_mutex_lock(&mutex_lock2); 
-        number_of_accounts ++;
-        pthread_mutex_unlock(&mutex_lock2); 
+        lock2.l_type = F_UNLCK;
+        fcntl (fd, F_SETLKW, &lock2);
     }
     else // an empty account (hole) was found in the database, so the new account's information in being put in there
     {
@@ -533,10 +572,27 @@ int add_account(account_t* new) // takes the account information and adds it int
             fcntl (fd, F_SETLKW, &lock2);
         }
     }
+    int pos = lseek(fd, 0, SEEK_SET);
+     /* Initialize the flock structure. */
+    memset (&lock2, 0, sizeof(lock));
+    lock2.l_type = F_WRLCK;
+    /* Place a write lock on the file. */
+    lock2.l_whence = SEEK_SET; // offset base is start of the file
+    lock2.l_start = 0;       
+    read(fd, pointer, SIZE);
+    pointer->balance = pointer->balance + 1.;
+    pos = lseek(fd, 0, SEEK_SET);
+    fcntl (fd, F_SETLKW, &lock2);
+    write(fd, pointer, SIZE);
+    lock2.l_type = F_UNLCK;
+    fcntl (fd, F_SETLKW, &lock2);
+    pthread_mutex_lock(&mutex_lock2); 
+    number_of_accounts ++;
+    pthread_mutex_unlock(&mutex_lock2); 
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
-    free(pointer);
+    
     // close(fd); we will not be doing this as this is a multithreader program
     return 0;
 }
@@ -583,7 +639,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                 strcpy(write_buffer, "1"); // whenever there is an error, a value greater than 0 is sent to the client, this will indicate to the client that something went wrong
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                 close(nsd);                // as something went wrong, we close the server
-                free(pointer);
+                
                 return NULL;
 
             }
@@ -592,7 +648,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                 strcpy(write_buffer, "2");
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                 close(nsd);
-                free(pointer);
+                
                 return NULL;
             }
             else
@@ -614,7 +670,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                 strcpy(write_buffer, "1");
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                 close(nsd);
-                free(pointer);
+                
                 return NULL;
             }
             else if(tag == -2)  // if the id is already open
@@ -622,7 +678,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                 strcpy(write_buffer, "2");
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                 close(nsd);
-                free(pointer);
+                
                 return NULL;
             }
             else               // we reach here after a successful login
@@ -652,7 +708,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                     {
                         close_con(open_id);
                         close(nsd);
-                        free(pointer);
+                        
                         return NULL;
                     }
                     // options which only require reading
@@ -757,8 +813,8 @@ void* login(void* nsd_) // this is the main function, everything that the server
                     {
                         close_con(open_id);
                         close(nsd);
-                        free(pointer);
-                        free(aux);
+                        
+                        ;
                         return NULL;
                     }
                     else if((int)read_buffer[0] == 51 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to get information about a particular account
@@ -921,6 +977,8 @@ void* login(void* nsd_) // this is the main function, everything that the server
                         else
                             strcpy(write_buffer, "Enter the new password: ");
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
+                        if(aux->this_id == 0)
+                            continue;
                         memset(read_buffer, 0, sizeof(read_buffer));
                         recv(nsd, read_buffer, sizeof(read_buffer), 0);
                         for(int i = 0; i < 1024; i++)
@@ -944,11 +1002,17 @@ void* login(void* nsd_) // this is the main function, everything that the server
                         serv.sin_addr = (inadr);
                         serv.sin_port = htons(6000);
                         server_on = 0;
-                        if(connect(sd, (void*)&serv, sizeof(cli)) == -1)
+                        write(1, "Yes", strlen("Yes"));
+                        int val = connect(sd, (void*)&serv, sizeof(cli));
+                        write(1, "Yes", strlen("Yes"));
+                        memset(write_buffer, 0, sizeof(write_buffer));
+                        itoa(val, write_buffer, 10);
+                        write(1, write_buffer, sizeof(write_buffer));
+                        if(val == -1)
                             server_on = 1;
+
                         close_con(1);
-                        free(aux);
-                        free(pointer);
+                        
                         return NULL;
                     }
                     else // this indicates an invalid input and in this case the admin is prompted to provide an input again
@@ -970,7 +1034,7 @@ int main()
     if(sd == -1)
     {
         write(2, "Error: Failed To Initialize the Socket!\n", strlen("Error: Failed To Initialize the Socket!\n"));
-        exit(-1);
+        exit(1);
     }
     struct in_addr inadr;
     struct sockaddr_in serv, cli;

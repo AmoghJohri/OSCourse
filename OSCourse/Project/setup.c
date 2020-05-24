@@ -128,7 +128,7 @@ int main() {
         }
     }
     printf("Adding 10 dummy joint-user accounts...\n"); // all with just two users
-    for(int i = 10; i < 30; i = i + 2)
+    for(int i = 11; i < 30; i = i + 2)
     {
         itoa(i+1, dummy_account->password, 10);
         dummy_account->id[0] = i+1;
