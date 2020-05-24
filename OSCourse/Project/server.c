@@ -189,7 +189,7 @@ void get_info(unsigned int id, account_t** pointer) // takes in the account id a
     {
         if(tag != 0) // already found the account so we do not want to be reading any further
             break;
-            
+
         int val = read(fd, *pointer, SIZE);
         if(val != SIZE)
         {
@@ -594,7 +594,6 @@ int add_account(account_t* new) // takes the account information and adds it int
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
-    
     // close(fd); we will not be doing this as this is a multithreader program
     return 0;
 }
