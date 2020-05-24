@@ -815,7 +815,6 @@ void* login(void* nsd_) // this is the main function, everything that the server
                         close_con(open_id);
                         close(nsd);
                         
-                        ;
                         return NULL;
                     }
                     else if((int)read_buffer[0] == 51 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to get information about a particular account
@@ -996,6 +995,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                     }
                     else if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to close the server
                     {
+                        close(nsd);
                         int sd = socket(AF_INET, SOCK_STREAM, 0);
                         struct in_addr inadr;
                         struct sockaddr_in serv, cli;
@@ -1003,17 +1003,10 @@ void* login(void* nsd_) // this is the main function, everything that the server
                         serv.sin_addr = (inadr);
                         serv.sin_port = htons(6000);
                         server_on = 0;
-                        write(1, "Yes", strlen("Yes"));
                         int val = connect(sd, (void*)&serv, sizeof(cli));
-                        write(1, "Yes", strlen("Yes"));
-                        memset(write_buffer, 0, sizeof(write_buffer));
-                        itoa(val, write_buffer, 10);
-                        write(1, write_buffer, sizeof(write_buffer));
                         if(val == -1)
                             server_on = 1;
-
                         close_con(1);
-                        
                         return NULL;
                     }
                     else // this indicates an invalid input and in this case the admin is prompted to provide an input again
@@ -1065,7 +1058,7 @@ int main()
         }
     }
 
-    val = listen(sd, 3);
+    val = listen(sd, 0);
     if(val  == -1)
     {
         write(2, "Error: Listen Failed\n", strlen("Error: Listen Failed\n"));
