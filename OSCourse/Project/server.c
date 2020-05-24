@@ -1,34 +1,40 @@
-#include <sys/types.h>          
-#include <sys/socket.h>
-#include <stdlib.h>
+/* Importing relevant libraries */
 #include <stdio.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <signal.h>
 #include <string.h>
-#include <netinet/in.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <pthread.h>
-#include <sys/select.h>
 #include <sys/time.h>
+#include <arpa/inet.h>
+#include <sys/types.h>          
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+
 #include "setup.h"
 
+// Defining locks on the number_of_accounts and open_connections variables. These are to be shared between different threads
 pthread_mutex_t mutex_lock1; 
 pthread_mutex_t mutex_lock2; 
 
-int server_on = 1;
-int number_of_accounts = -1;
-int open_connections[1024] = {0};
+// no lock has been defined on server_on global variable as only the admin has access to it
+int server_on               = 1; // this indicates whether the server is switched on of off; if server_on == 0, the server does not accept any further connections
 
-void strreverse(char* begin, char* end) {
-	char aux;
+int number_of_accounts      = -1; // this indicates the total number of accounts present in the database
+int open_connections[1024]  = {0}; // this indicates the account id's which are logged in, a total of 1024 connections are permitted here
+
+// auxillary functions - do not provide much direct functionality to the project
+void strreverse(char* begin, char* end) { // reverses a string
+	char aux; 
 	while(end>begin)
 		aux=*end, *end--=*begin, *begin++=aux;
 }
 	
-void itoa(int value, char* str, int base) {
+void itoa(int value, char* str, int base) { // converts an integer into a string
 	static char num[] = "0123456789abcdefghijklmnopqrstuvwxyz";
 	char* wstr=str;
 	int sign;
@@ -44,7 +50,8 @@ void itoa(int value, char* str, int base) {
 	strreverse(str,wstr-1);	
 }
 
-int open_con(int id)
+// functions to access the open_connections global variable, this has to be shared between multiple threads and hence, appropriate locking has been defined for reading
+int open_con(int id) // this takes in an account id and enters its value in the open_connections array indicating that the account id is active
 {
     for(int i = 0; i < 1024; i++)
     {
@@ -59,7 +66,7 @@ int open_con(int id)
     return 1;
 }
 
-int close_con(int id)
+int close_con(int id) // this takes in an accunt_id and removes its value from the open_connections indicating that the account is now logging out
 {
     for(int i = 0; i < 1024; i++)
     {
@@ -74,7 +81,7 @@ int close_con(int id)
     return 1;
 }
 
-int is_open(int id)
+int is_open(int id) // this takes in an account_id and checks whether it is already logged in or not. Same account ids cannot log in from multiple clients at the same time
 {
     for(int i = 0; i < 1024; i++)
     {
@@ -84,17 +91,17 @@ int is_open(int id)
     return 1;
 }
 
-void pds_init(void)
+void pds_init(void) // this initializes our personal data-store. It creates an admin account and 20 other accounts in which 10 are single-user accounts and 20 are joint-user accounts
 {
     int fd = open("pds.bin", O_RDONLY); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
-    printf("Error: Database Failed To Open!\n");
+    write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
     exit(1);
     }
-    account_t* pointer = (account_t*)calloc(1, sizeof(SIZE));
+    account_t* pointer = (account_t*)calloc(1, SIZE);
     if(read(fd, pointer, SIZE) != SIZE)
     {
-      printf("Error: Database Failed To Read!\n");
+      write(2, "Error: Database Failed To Read!\n", strlen("Error: Database Failed To Read!\n"));
       exit(1);
     }
     pthread_mutex_lock(&mutex_lock2); 
@@ -103,14 +110,14 @@ void pds_init(void)
     free(pointer);
     if(lseek(fd, 0, SEEK_SET) != 0)
     {
-        printf("Error: Lseek Failed!\n");
+        write(2, "Error: Lseek Failed!\n", strlen("Error: Lseek Failed!\n"));
         exit(-1);
     }
     close(fd);
     return ;
 }
 
-int match_password(account_t* pointer, char* pwd)
+int match_password(account_t* pointer, char* pwd) // password verification for an account instance
 {
     int i = 0;
     int a;
@@ -149,10 +156,10 @@ int match_password(account_t* pointer, char* pwd)
     return 0;
 }
 
-int get_len(int* arr)
+int get_len(int* arr) // gets the length of an array (this to know the number of account ids that are associated to an account)
 {
     int counter = 0;
-    for(int i = 0; i < 5; i++)
+    for(int i = 0; i < ACC; i++)
     {
         if(arr[i] > 0)
             counter = counter + 1;
@@ -160,13 +167,13 @@ int get_len(int* arr)
     return counter;
 }
 
-void get_info(unsigned int id, account_t** pointer)
+void get_info(unsigned int id, account_t** pointer) // takes in the account id and returns the info about the account in an account_t struct; if the account is not present, the value of attribute "this_id" is set to 0
 {
     struct flock lock; // putting a read lock on the file
 
     int fd = open("pds.bin", O_RDONLY); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
-      printf("Error: Database Failed To Open!\n");
+      write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
       exit(1);
     }
 
@@ -183,10 +190,10 @@ void get_info(unsigned int id, account_t** pointer)
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
-        if(read(fd, *pointer, sizeof(account_t)) != sizeof(account_t))
+        if(read(fd, *pointer, SIZE) != SIZE)
         {
-            printf("Error: Read Failed\n");
-            exit(-1);
+            write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
+            exit(1);
         }
         unsigned int* arr = (*pointer)->id;
         int counter = 0;
@@ -213,15 +220,15 @@ void get_info(unsigned int id, account_t** pointer)
     return ;
 }
 
-int augment_balance(float new, int id)
+int augment_balance(float new, int id) // takes in the amount which is to be added to the balance and the corresponding id of the acccount, and does the needfull
 {
     struct flock lock; // putting a read lock on the file
 
-    account_t* pointer = (account_t*)calloc(1, sizeof(account_t));
+    account_t* pointer = (account_t*)calloc(1, SIZE);
 
     int fd = open("pds.bin", O_RDWR); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
-      printf("Error: Database Failed To Open!\n");
+      write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
       exit(1);
     }
 
@@ -238,10 +245,10 @@ int augment_balance(float new, int id)
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
-        if(read(fd, pointer, sizeof(account_t)) != sizeof(account_t))
+        if(read(fd, pointer, SIZE) != SIZE)
         {
-            printf("Error: Read Failed\n");
-            exit(-1);
+            write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
+            exit(1);
         }
         unsigned int* arr = (pointer)->id;
         int counter = 0;
@@ -261,13 +268,19 @@ int augment_balance(float new, int id)
         }
 
     }
-    if(tag == 0)
-        return -1;
-    else if(pointer->this_id == 0) // insufficient balance
-        return -2;
-    else// otherwise we have balance lower than 0
+    if(tag == 0) // account was not found
     {
-        int pos = lseek(fd, -1*sizeof(account_t), SEEK_CUR); // move one space back
+        free(pointer);
+        return -1;
+    }
+    else if(pointer->this_id == 0) // insufficient balance
+    {
+        free(pointer);
+        return -2;
+    }
+    else   
+    {
+        int pos = lseek(fd, -1*SIZE, SEEK_CUR); // move one space back
         {
             struct flock lock2; // putting a read lock on the file
              /* Initialize the flock structure. */
@@ -276,9 +289,9 @@ int augment_balance(float new, int id)
             /* Place a write lock on the file. */
             lock2.l_whence = SEEK_SET; // offset base is start of the file
             lock2.l_start = pos;         // starting offset is zero
-            lock2.l_len = sizeof(account_t); 
+            lock2.l_len = SIZE; 
             fcntl (fd, F_SETLKW, &lock2);
-            write(fd, pointer, sizeof(account_t));
+            write(fd, pointer, SIZE);
             // unlocking the file
             lock2.l_type = F_UNLCK;
             fcntl (fd, F_SETLKW, &lock2);
@@ -287,20 +300,20 @@ int augment_balance(float new, int id)
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
-
+    free(pointer);
     // close(fd); we will not be doing this as this is a multithreader program
     return 0;
 }
 
-int change_password(char* new, int id)
+int change_password(char* new, int id) // takes the new password and the associated account id and changes the password
 {
     struct flock lock; // putting a read lock on the file
 
-    account_t* pointer = (account_t*)calloc(1, sizeof(account_t));
+    account_t* pointer = (account_t*)calloc(1, SIZE);
 
     int fd = open("pds.bin", O_RDWR); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
-      printf("Error: Database Failed To Open!\n");
+      write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
       exit(1);
     }
 
@@ -317,10 +330,10 @@ int change_password(char* new, int id)
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
-        if(read(fd, pointer, sizeof(account_t)) != sizeof(account_t))
+        if(read(fd, pointer, SIZE) != SIZE)
         {
-            printf("Error: Read Failed\n");
-            exit(-1);
+            write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
+            exit(1);
         }
         unsigned int* arr = (pointer)->id;
         int counter = 0;
@@ -337,11 +350,14 @@ int change_password(char* new, int id)
         }
 
     }
-    if(tag == 0)
+    if(tag == 0) // the account was not found
+    {
+        free(pointer);
         return -1;
+    }
     else
     {
-        int pos = lseek(fd, -1*sizeof(account_t), SEEK_CUR); // move one space back
+        int pos = lseek(fd, -1*SIZE, SEEK_CUR); // move one space back
         {
             struct flock lock2; // putting a read lock on the file
              /* Initialize the flock structure. */
@@ -350,9 +366,9 @@ int change_password(char* new, int id)
             /* Place a write lock on the file. */
             lock2.l_whence = SEEK_SET; // offset base is start of the file
             lock2.l_start = pos;         // starting offset is zero
-            lock2.l_len = sizeof(account_t); 
+            lock2.l_len = SIZE; 
             fcntl (fd, F_SETLKW, &lock2);
-            write(fd, pointer, sizeof(account_t));
+            write(fd, pointer, SIZE);
             // unlocking the file
             lock2.l_type = F_UNLCK;
             fcntl (fd, F_SETLKW, &lock2);
@@ -361,20 +377,20 @@ int change_password(char* new, int id)
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
-
+    free(pointer);
     // close(fd); we will not be doing this as this is a multithreader program
     return 0;
 }
 
-int delete_account(int id)
+int delete_account(int id) // takes an id and deletes the account corresponding to it
 {
     struct flock lock; // putting a read lock on the file
 
-    account_t* pointer = (account_t*)calloc(1, sizeof(account_t));
+    account_t* pointer = (account_t*)calloc(1, SIZE);
 
     int fd = open("pds.bin", O_RDWR); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
-      printf("Error: Database Failed To Open!\n");
+      write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
       exit(1);
     }
 
@@ -391,10 +407,10 @@ int delete_account(int id)
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
-        if(read(fd, pointer, sizeof(account_t)) != sizeof(account_t))
+        if(read(fd, pointer, SIZE) != SIZE)
         {
-            printf("Error: Read Failed\n");
-            exit(-1);
+            write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
+            exit(1);
         }
         unsigned int* arr = (pointer)->id;
         int counter = 0;
@@ -410,11 +426,14 @@ int delete_account(int id)
         }
 
     }
-    if(tag == 0)
+    if(tag == 0) // account was not found 
+    {
+        free(pointer);
         return -1;
+    }
     else
     {
-        int pos = lseek(fd, -1*sizeof(account_t), SEEK_CUR); // move one space back
+        int pos = lseek(fd, -1*SIZE, SEEK_CUR); // move one space back
         {
             struct flock lock2; // putting a read lock on the file
              /* Initialize the flock structure. */
@@ -423,10 +442,10 @@ int delete_account(int id)
             /* Place a write lock on the file. */
             lock2.l_whence = SEEK_SET; // offset base is start of the file
             lock2.l_start = pos;         // starting offset is zero
-            lock2.l_len = sizeof(account_t); 
+            lock2.l_len = SIZE; 
             fcntl (fd, F_SETLKW, &lock2);
             memset(pointer->id, 0, sizeof(pointer->id));
-            write(fd, pointer, sizeof(account_t));
+            write(fd, pointer, SIZE);
             // unlocking the file
             lock2.l_type = F_UNLCK;
             fcntl (fd, F_SETLKW, &lock2);
@@ -435,20 +454,20 @@ int delete_account(int id)
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
-
+    free(pointer);
     // close(fd); we will not be doing this as this is a multithreader program
     return 0;
 }
 
-int add_account(account_t* new)
+int add_account(account_t* new) // takes the account information and adds it into the database
 {
     struct flock lock; // putting a read lock on the file
 
-    account_t* pointer = (account_t*)calloc(1, sizeof(account_t));
+    account_t* pointer = (account_t*)calloc(1, SIZE);
 
     int fd = open("pds.bin", O_RDWR); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
-      printf("Error: Database Failed To Open!\n");
+      write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
       exit(1);
     }
 
@@ -465,10 +484,10 @@ int add_account(account_t* new)
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
-        if(read(fd, pointer, sizeof(account_t)) != sizeof(account_t))
+        if(read(fd, pointer, SIZE) != SIZE)
         {
-            printf("Error: Read Failed\n");
-            exit(-1);
+            write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
+            exit(1);
         }
         if((pointer->id)[0] == 0)
         {
@@ -477,21 +496,21 @@ int add_account(account_t* new)
         }
     }
 
-    if(tag == 0)
+    if(tag == 0) // there were no empty accounts found, hence, the account is being added to the end; There is no need for a write lock because no other account shall be looking in this space and only admin can add the account
     {
-        write(fd, new, sizeof(account_t));
+        write(fd, new, SIZE);
         int pos = lseek(fd, 0, SEEK_SET);
-        read(fd, pointer, sizeof(account_t));
+        read(fd, pointer, SIZE);
         pointer->balance = pointer->balance + 1.;
         pos = lseek(fd, 0, SEEK_SET);
-        write(fd, pointer, sizeof(account_t));
+        write(fd, pointer, SIZE);
         pthread_mutex_lock(&mutex_lock2); 
         number_of_accounts ++;
         pthread_mutex_unlock(&mutex_lock2); 
     }
-    else
+    else // an empty account (hole) was found in the database, so the new account's information in being put in there
     {
-        int pos = lseek(fd, -1*sizeof(account_t), SEEK_CUR); // move one space back
+        int pos = lseek(fd, -1*SIZE, SEEK_CUR); // move one space back
         {
             struct flock lock2; // putting a read lock on the file
              /* Initialize the flock structure. */
@@ -500,9 +519,9 @@ int add_account(account_t* new)
             /* Place a write lock on the file. */
             lock2.l_whence = SEEK_SET; // offset base is start of the file
             lock2.l_start = pos;         // starting offset is zero
-            lock2.l_len = sizeof(account_t); 
+            lock2.l_len = SIZE; 
             fcntl (fd, F_SETLKW, &lock2);
-            write(fd, new, sizeof(account_t));
+            write(fd, new, SIZE);
             // unlocking the file
             lock2.l_type = F_UNLCK;
             fcntl (fd, F_SETLKW, &lock2);
@@ -511,93 +530,96 @@ int add_account(account_t* new)
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
-
+    free(pointer);
     // close(fd); we will not be doing this as this is a multithreader program
     return 0;
 }
 
-void* login(void* nsd_)
+void* login(void* nsd_) // this is the main function, everything that the server does with respect to a particular client goes on in here
 {
-    char id[2] = {0};
-    char password[LEN] = {0};
-    int nsd = *(int*)nsd_;
-    // printf("NSD: %d\n", nsd);
-
-    int i = 0;
-    int tag = 0;
-
+    char id[2]           = {0};
+    char password[LEN]   = {0};         // LEN = 1024
+    int nsd              = *(int*)nsd_;
+    int i                = 0;
+    int tag              = 0;
     unsigned int open_id = 0;
 
-    account_t* pointer = (account_t*)calloc(1, sizeof(account_t));
+    account_t* pointer   = (account_t*)calloc(1, SIZE); // this will contain all the information of the account being dealt with
+
     while(1)
     {
-        char write_buffer[1024] = {0};
-        char read_buffer[1024] = {0};
-        if(i == 0) // iteration 1
+        char write_buffer[1024] = {0}; // this will be used to send messages to the client
+        char read_buffer[1024]  = {0}; // this will be used to receive messages from the client
+
+        if(i == 0) // iteration 1, here the login id is verified
         {
             strcpy(write_buffer, "Enter the login id: ");
             send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
             recv(nsd, read_buffer, sizeof(read_buffer), 0);
             get_info(atoi(read_buffer), &pointer);
-            if(pointer->this_id == 0)
+            if(pointer->this_id == 0)            // login id was not found
                 tag = -1;
-            if(is_open(pointer->this_id) == 0)
+            if(is_open(pointer->this_id) == 0)   // login id added to the array of open connections
             {
                 if(tag == -1)
-                    close_con(pointer->this_id);
-                else 
+                    close_con(pointer->this_id); // if the login id was not found, it is removed from the set of open connections
+                else                             // the login is already open
                     tag = -2;
             }
-            else
+            else                                 // the login id was found and it was not already open and hence, we can procede further
                 open_id = pointer->this_id;
             i = i + 1;
         }
-        else if(i == 1) // second iteration
+        else if(i == 1)                    // second iteration, the password is verified here
         {
-            if(tag == -1) // incorrect id
+            if(tag == -1)                  // incorrect id
             {
-                strcpy(write_buffer, "1");
+                strcpy(write_buffer, "1"); // whenever there is an error, a value greater than 0 is sent to the client, this will indicate to the client that something went wrong
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
-                close(nsd);
+                close(nsd);                // as something went wrong, we close the server
+                free(pointer);
                 return NULL;
 
             }
-            else if(tag == -2) // id already open
+            else if(tag == -2)             // id already open
             {
                 strcpy(write_buffer, "2");
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                 close(nsd);
+                free(pointer);
                 return NULL;
             }
             else
             {
                 strcpy(write_buffer, "Enter the password: ");
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
-                recv(nsd, read_buffer, sizeof(read_buffer), 0);
-                get_info(open_id, &pointer);
-                tag = match_password(pointer, read_buffer);
+                recv(nsd, read_buffer, sizeof(read_buffer), 0); // the password is received by the server
+                get_info(open_id, &pointer);                    // this is performed in case the password has been changed by other users in a joint account scenario (or changed by the admin)
+                tag = match_password(pointer, read_buffer);     // matching the password
                 if(is_open(open_id) == 0)
-                    tag = -2;
+                    tag = -2;                                   // if during this time, the same id got opened from another client process, we raise an error
                 i = i + 1;
             }
         }
-        else if(i == 2) // completing the login
+        else if(i == 2)         // completing the login
         {
-            if(tag == -1)
+            if(tag == -1)       // if the password did not match
             {
                 strcpy(write_buffer, "1");
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                 close(nsd);
+                free(pointer);
                 return NULL;
             }
-            else if(tag == -2) // id already open
+            else if(tag == -2)  // if the id is already open
             {
                 strcpy(write_buffer, "2");
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                 close(nsd);
+                free(pointer);
                 return NULL;
             }
-            else
+            else               // we reach here after a successful login
             {
                 open_con(open_id);
                 strcpy(write_buffer, "Login Successful!\n");
@@ -605,25 +627,30 @@ void* login(void* nsd_)
                 i = i + 1;
             }
         }
-        else // main loop
+        else // main loop (can only be reached after a successful login)
         {
             while(1)
             {
-                if(open_id != 1)// this is a user account
+                if(open_id != 1) // this is a user account (id == 1 has been reserved for the admin)
                 {
-                    memset(read_buffer, 0, sizeof(read_buffer));
-                    memset(write_buffer, 0, sizeof(write_buffer));
+                    memset(read_buffer, 0, sizeof(read_buffer)); 
+                    memset(write_buffer, 0, sizeof(write_buffer)); 
+
+                    // providing the user with various options
                     strcpy(write_buffer, "Press 1 to Deposit\nPress 2 to Withdraw\nPress 3 for Balance Enquiry\nPress 4 for Password Change\nPress 5 to view details\nPress 6 to exit\nEnter your option: ");
                     send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
-                    recv(nsd, read_buffer, sizeof(read_buffer), 0);
-                    if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10)
+
+                    recv(nsd, read_buffer, sizeof(read_buffer), 0); // receiving the user input
+
+                    if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10) // this input indicates that the user wants to logout
                     {
                         close_con(open_id);
                         close(nsd);
+                        free(pointer);
                         return NULL;
                     }
                     // options which only require reading
-                    else if((int)read_buffer[0] == 51 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 51 && (int)read_buffer[1] == 10) // this input indicates that the user wants to know the account balance
                     {
                         get_info(open_id, &pointer);
 
@@ -631,7 +658,7 @@ void* login(void* nsd_)
                         gcvt(pointer->balance, 10, write_buffer); 
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                     }
-                    else if((int)read_buffer[0] == 53 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 53 && (int)read_buffer[1] == 10) // this input indicates that the user wants to know the account details
                     {
                         get_info(open_id, &pointer);
 
@@ -655,7 +682,7 @@ void* login(void* nsd_)
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                     }
                     // options which require writing
-                    else if((int)read_buffer[0] == 49 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 49 && (int)read_buffer[1] == 10) // this input indicates that the user wants to deposit 
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the amount: ");
@@ -666,7 +693,7 @@ void* login(void* nsd_)
 
                         augment_balance(strtof(read_buffer, NULL), open_id);
                     }
-                    else if((int)read_buffer[0] == 50 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 50 && (int)read_buffer[1] == 10) // this input indicates that the user wants to withdraw
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the amount: ");
@@ -682,7 +709,7 @@ void* login(void* nsd_)
                             strcpy(write_buffer, "0");
                         send(nsd, write_buffer, sizeof(read_buffer), MSG_CONFIRM);
                     }
-                    else if((int)read_buffer[0] == 52 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 52 && (int)read_buffer[1] == 10) // this input indicates that the user wants to change the account password
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the new-password: ");
@@ -701,7 +728,7 @@ void* login(void* nsd_)
                         memset(write_buffer, 0, sizeof(write_buffer));
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                     }
-                    else
+                    else // this indicates an invalid input and in this case the user is prompted to provide an input again
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "1");
@@ -710,19 +737,25 @@ void* login(void* nsd_)
                 }
                 else if(open_id == 1) // admin
                 {
-                    account_t* aux = (account_t*)calloc(1, sizeof(account_t));
+                    account_t* aux = (account_t*)calloc(1, SIZE); // this will contain all the information about the accounts admin wishes to access
                     memset(read_buffer, 0, sizeof(read_buffer));
                     memset(write_buffer, 0, sizeof(write_buffer));
+
+                    // these are the various options provided to the admin
                     strcpy(write_buffer, "Press 1 To Add an Account\nPress 2 To Delete an Account\nPress 3 To Get Account Details\nPress 4 To Modify Account Password\nPress 5 To Exit\nPress 6 To Shut the Server Down\nEnter your option: ");
                     send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
+                    
+                    // the input is received from the admin
                     recv(nsd, read_buffer, sizeof(read_buffer), 0);
-                    if((int)read_buffer[0] == 53 && (int)read_buffer[1] == 10)
+                    if((int)read_buffer[0] == 53 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to logout
                     {
                         close_con(open_id);
                         close(nsd);
+                        free(pointer);
+                        free(aux);
                         return NULL;
                     }
-                    else if((int)read_buffer[0] == 51 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 51 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to get information about a particular account
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the account id: ");
@@ -763,7 +796,7 @@ void* login(void* nsd_)
                             send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                         }
                     }
-                    else if((int)read_buffer[0] == 50 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 50 && (int)read_buffer[1] == 10) // this input indicates that the admin wants to delete an account
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the account id: ");
@@ -807,7 +840,7 @@ void* login(void* nsd_)
 
                         }
                     }
-                    else if((int)read_buffer[0] == 49 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 49 && (int)read_buffer[1] == 10) // this input indicates that the admin wants to create an account
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the number of people sharing (1 to 5): ");
@@ -825,8 +858,8 @@ void* login(void* nsd_)
                             continue;
                         }
                         int tag = 0;
-                        account_t* new = (account_t*)calloc(1, sizeof(account_t));
-                        account_t* aux = (account_t*)calloc(1, sizeof(account_t));
+                        account_t* new = (account_t*)calloc(1, SIZE);
+                        account_t* aux = (account_t*)calloc(1, SIZE);
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM); // sending the number of times looping is required;
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the account ids (one after the other): ");
@@ -868,7 +901,7 @@ void* login(void* nsd_)
                         new->balance = 0.0;
                         add_account(new);
                     }
-                    else if((int)read_buffer[0] == 52 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 52 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to modify the account password
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the account id: ");
@@ -896,7 +929,7 @@ void* login(void* nsd_)
                         memset(write_buffer, 0, sizeof(write_buffer));
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);       
                     }
-                    else if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10)
+                    else if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to close the server
                     {
                         int sd = socket(AF_INET, SOCK_STREAM, 0);
                         struct in_addr inadr;
@@ -908,9 +941,11 @@ void* login(void* nsd_)
                         if(connect(sd, (void*)&serv, sizeof(cli)) == -1)
                             server_on = 1;
                         close_con(1);
+                        free(aux);
+                        free(pointer);
                         return NULL;
                     }
-                    else
+                    else // this indicates an invalid input and in this case the admin is prompted to provide an input again
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "1");
@@ -928,7 +963,7 @@ int main()
     int sd = socket(AF_INET, SOCK_STREAM, 0); // RAW Socket Descriptor
     if(sd == -1)
     {
-        printf("Error: Failed To Initialize the Socket!\n");
+        write(2, "Error: Failed To Initialize the Socket!\n", strlen("Error: Failed To Initialize the Socket!\n"));
         exit(-1);
     }
     struct in_addr inadr;
@@ -942,68 +977,70 @@ int main()
 
     int enable = 1;
     if (setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-        printf("Error: setsockopt(SO_REUSEADDR) failed");
+        write(2, "Error: setsockopt(SO_REUSEADDR) failed", strlen("Error: setsockopt(SO_REUSEADDR) failed"));
 
     int val = bind(sd, (void*)&serv, sizeof(serv));
     if(val == -1)
     {
         if(errno == EADDRINUSE)
         {
-            printf("Error: Given Address Is Already In Use!\n");
-            exit(-1);
+            write(2, "Error: Given Address Is Already In Use!\n", strlen("Error: Given Address Is Already In Use!\n"));
+            exit(1);
         }
         else
         {
-            printf("Error: Bind Failed!\n");
-            exit(-1);
+            write(2, "Error: Bind Failed!\n", strlen("Error: Bind Failed!\n"));
+            exit(1);
         }
     }
 
     val = listen(sd, 3);
     if(val  == -1)
     {
-        printf("Error: Listen Failed\n");
-        exit(-1);
+        write(2, "Error: Listen Failed\n", strlen("Error: Listen Failed\n"));
+        exit(1);
     }
 
-    //  printf("Server is up and running...\n");
-
     if (pthread_mutex_init(&mutex_lock1, NULL) != 0) { 
-        printf("\n mutex init has failed\n"); 
-        return 1; 
+        write(2, "\n mutex init has failed\n", strlen("\n mutex init has failed\n")); 
+        exit(1); 
     }  
     if (pthread_mutex_init(&mutex_lock2, NULL) != 0) { 
-        printf("\n mutex init has failed\n"); 
-        return 1; 
+        write(2, "\n mutex init has failed\n", strlen("\n mutex init has failed\n")); 
+        exit(1); 
     } 
     pds_init();
 
-    pthread_t thread_id[1024];
+    pthread_t thread_id[1024]; // maximum number of thread supported
     int counter = 0;
     int nsd = 0;
 
     while(1)
     {            
         nsd = accept(sd, (void*)&cli, (socklen_t*)&addrlen);
-        if(server_on == 0)
+        if(server_on == 0) // this is once the server is signalled switched off; it does not accept any more connections but lets the ongoing connections run to completion
         {
             break;
         }
         if(nsd == -1)
         {
-            printf("Error: Connection Failed To Establish!\n");
+            write(2, "Error: Connection Failed To Establish!\n", strlen("Error: Connection Failed To Establish!\n"));
         }
         else
         {
             pthread_create( &thread_id[counter] , NULL ,  login , (void*) &nsd);
             counter++;
+            if(counter == 1024)
+            {
+                write(2, "Maximum thread count exceded!\n", strlen("Maximum thread count exceded!\n"));
+            }
         }
     }   
     for(unsigned long int i = 0; i < counter; i++)
     {
         pthread_join(thread_id[i], NULL); // waiting for all the active threads
     }
-    shutdown(nsd, SHUT_RDWR);
+    shutdown(nsd, SHUT_RDWR); // shutting the server down
     
     pthread_mutex_destroy(&mutex_lock1);
     pthread_mutex_destroy(&mutex_lock2);  
