@@ -189,9 +189,12 @@ void get_info(unsigned int id, account_t** pointer) // takes in the account id a
     {
         if(tag != 0) // already found the account so we do not want to be reading any further
             break;
-
-        if(read(fd, *pointer, SIZE) != SIZE)
+            
+        int val = read(fd, *pointer, SIZE);
+        if(val != SIZE)
         {
+            if(val == 0)
+                continue;
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -250,8 +253,7 @@ int augment_balance(float new, int id) // takes in the amount which is to be add
             break;
 
         if(read(fd, pointer, SIZE) != SIZE)
-        {
-            
+        {    
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
