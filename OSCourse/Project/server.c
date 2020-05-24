@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <errno.h>
+#include <signal.h>
 #include <string.h>
 #include <netinet/in.h>
 #include <netinet/in.h>
@@ -518,7 +518,7 @@ void* login(void* nsd_)
     char id[2] = {0};
     char password[LEN] = {0};
     int nsd = *(int*)nsd_;
-    printf("NSD: %d\n", nsd);
+    // printf("NSD: %d\n", nsd);
 
     int i = 0;
     int tag = 0;
@@ -684,7 +684,6 @@ void* login(void* nsd_)
                         memset(write_buffer, 0, sizeof(write_buffer));
                         strcpy(write_buffer, "Enter the new-password: ");
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
-                        
                         memset(read_buffer, 0, sizeof(read_buffer));
                         recv(nsd, read_buffer, sizeof(read_buffer), 0);
                         for(int i = 0; i < 1024; i++)
@@ -692,7 +691,12 @@ void* login(void* nsd_)
                             if((int)read_buffer[i] == 10)
                                 read_buffer[i] = (char)0;
                         }
-                        change_password(read_buffer, open_id);
+                        if(change_password(read_buffer, open_id) == 0)
+                            strcpy(write_buffer, "1");
+                        else
+                            strcpy(write_buffer, "0");
+                        memset(write_buffer, 0, sizeof(write_buffer));
+                        send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                     }
                     else
                     {
@@ -706,10 +710,10 @@ void* login(void* nsd_)
                     account_t* aux = (account_t*)calloc(1, sizeof(account_t));
                     memset(read_buffer, 0, sizeof(read_buffer));
                     memset(write_buffer, 0, sizeof(write_buffer));
-                    strcpy(write_buffer, "Press 1 to Add an Account\nPress 2 to Delete an Account\nPress 3 to get Account Details\nPress 4 to exit\nEnter your option: ");
+                    strcpy(write_buffer, "Press 1 To Add an Account\nPress 2 To Delete an Account\nPress 3 To Get Account Details\nPress 4 To Modify Account Password\nPress 5 To Exit\nEnter your option: ");
                     send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                     recv(nsd, read_buffer, sizeof(read_buffer), 0);
-                    if((int)read_buffer[0] == 52 && (int)read_buffer[1] == 10)
+                    if((int)read_buffer[0] == 53 && (int)read_buffer[1] == 10)
                     {
                         close_con(open_id);
                         close(nsd);
@@ -861,6 +865,34 @@ void* login(void* nsd_)
                         new->balance = 0.0;
                         add_account(new);
                     }
+                    else if((int)read_buffer[0] == 52 && (int)read_buffer[1] == 10)
+                    {
+                        memset(write_buffer, 0, sizeof(write_buffer));
+                        strcpy(write_buffer, "Enter the account id: ");
+                        send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
+                        memset(read_buffer, 0, sizeof(read_buffer));
+                        recv(nsd, read_buffer, sizeof(read_buffer), 0);
+                        memset(write_buffer, 0, sizeof(write_buffer));
+                        get_info(atoi(read_buffer), &aux);
+                        if(aux->this_id == 0)
+                            strcpy(write_buffer, "1");
+                        else
+                            strcpy(write_buffer, "Enter the new password: ");
+                        send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
+                        memset(read_buffer, 0, sizeof(read_buffer));
+                        recv(nsd, read_buffer, sizeof(read_buffer), 0);
+                        for(int i = 0; i < 1024; i++)
+                        {
+                            if((int)read_buffer[i] == 10)
+                                read_buffer[i] = (char)0;
+                        }
+                        if(change_password(read_buffer, aux->this_id) == 0)
+                            strcpy(write_buffer, "1");
+                        else
+                            strcpy(write_buffer, "0");
+                        memset(write_buffer, 0, sizeof(write_buffer));
+                        send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);       
+                    }
                     else
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
@@ -877,7 +909,7 @@ void* login(void* nsd_)
 
 int main()
 {   
-    printf("This is the server program!\n");
+    // printf("This is the server program!\n");
     int sd = socket(AF_INET, SOCK_STREAM, 0); // RAW Socket Descriptor
     if(sd == -1)
     {
@@ -890,8 +922,8 @@ int main()
     serv.sin_family = AF_INET;
     inadr.s_addr = INADDR_ANY; // since the communication is taking place over the same device
     serv.sin_addr = (inadr);
-    serv.sin_port = htons(5000); // setting the port no. as 5000
-    printf("The port is: %d\n", serv.sin_port);
+    serv.sin_port = htons(6000); // setting the port no. as 5000
+    // printf("The port is: %d\n", serv.sin_port); 
 
     int enable = 1;
     if (setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
@@ -912,14 +944,14 @@ int main()
         }
     }
 
-    val = listen(sd, 20);
+    val = listen(sd, 3);
     if(val  == -1)
     {
         printf("Error: Listen Failed\n");
         exit(-1);
     }
 
-    printf("Server is up and running...\n");
+    //  printf("Server is up and running...\n");
 
     if (pthread_mutex_init(&mutex_lock1, NULL) != 0) { 
         printf("\n mutex init has failed\n"); 
@@ -933,8 +965,10 @@ int main()
 
     unsigned long thread_id = 0;
     int nsd = 0;
+
+
     while(1)
-    {
+    {   
         nsd = accept(sd, (void*)&cli, (socklen_t*)&addrlen);
         if(nsd == -1)
         {
@@ -942,7 +976,7 @@ int main()
         }
         else
         {
-            printf("Connected to client: %s\n",inet_ntoa(cli.sin_addr));
+            // printf("Connected to client: %s\n",inet_ntoa(cli.sin_addr));
             thread_id += 1;
             pthread_create( &thread_id , NULL ,  login , (void*) &nsd);
         }
@@ -951,6 +985,8 @@ int main()
     {
         pthread_join(i, NULL); // waiting for all the active threads
     }
+    shutdown(nsd, SHUT_RDWR);
+    
     pthread_mutex_destroy(&mutex_lock1);
     pthread_mutex_destroy(&mutex_lock2);  
     return 0;

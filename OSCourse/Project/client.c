@@ -19,7 +19,6 @@ int check(char* read_buffer)
    return 0;
 }
 
-
 int main()
 {
     printf("This is the client program!\n");
@@ -36,7 +35,7 @@ int main()
     serv.sin_family = AF_INET;
     inadr.s_addr = INADDR_ANY;
     serv.sin_addr = (inadr);
-    serv.sin_port = htons(5000); // setting the port no. as 5000
+    serv.sin_port = htons(6000); // setting the port no. as 5000
     printf("The port is: %d\n", serv.sin_port);
 
     int val = connect(sd, (void*)&serv, sizeof(serv));
@@ -203,6 +202,23 @@ int main()
                         recv(sd, read_buffer, sizeof(read_buffer), 0);
                         if(check(read_buffer) == -1) write(1, "Insufficient Balance\n", strlen("Insufficient Balance\n"));
                     }
+                    else if((int)write_buffer[0] == 52 && (int)write_buffer[1] == 10)
+                    {
+                        memset(read_buffer, 0, sizeof(read_buffer));
+                        recv(sd, read_buffer, sizeof(read_buffer), 0);
+                        if(check(read_buffer) == -1) 
+                        {
+                            write(1, "Invalid Input, Try Again!\n", strlen("Invalid Input, Try Again!\n"));
+                            continue;
+                        }
+                        write(1, read_buffer, sizeof(read_buffer));
+                        memset(write_buffer, 0, sizeof(write_buffer));
+                        read(0, write_buffer, sizeof(write_buffer));
+                        send(sd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
+                        memset(read_buffer, 0, sizeof(read_buffer));
+                        recv(sd, read_buffer, sizeof(read_buffer), 0);
+                        if(check(read_buffer) == -1) write(1, "Failed To Change Password\n", strlen("Failed To Change Password\n"));
+                    }
                 }
             }
             else
@@ -220,7 +236,7 @@ int main()
                     write(1, read_buffer, sizeof(read_buffer));
                     read(0, write_buffer, sizeof(write_buffer));
                     send(sd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
-                    if((int)write_buffer[0] == 52 && (int)write_buffer[1] == 10)
+                    if((int)write_buffer[0] == 53 && (int)write_buffer[1] == 10)
                     {
                         printf("Closing the connection...\n");
                         exit(-1);
@@ -294,6 +310,38 @@ int main()
                         {
                             write(1, "Account Deleted!\n", strlen("Account Deleted!\n"));
                             continue; 
+                        }
+                    }
+                    else if((int)write_buffer[0] == 52 && (int)write_buffer[1] == 10)
+                    {
+                        memset(read_buffer, 0, sizeof(read_buffer));
+                        recv(sd, read_buffer, sizeof(read_buffer), 0);
+                        if(check(read_buffer) == -1) 
+                        {
+                            write(1, "Invalid Input, Try Again!\n", strlen("Invalid Input, Try Again!\n"));
+                            continue;
+                        }
+                        write(1, read_buffer, sizeof(read_buffer));
+                        memset(write_buffer, 0, sizeof(write_buffer));
+                        read(0, write_buffer, sizeof(write_buffer));
+                        send(sd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
+                        memset(read_buffer, 0, sizeof(read_buffer));
+                        recv(sd, read_buffer, sizeof(read_buffer), 0);
+                        if(check(read_buffer) == -1)
+                        {
+                            write(1, "Account ID Invalid!\n", strlen("Account ID Invalid!\n"));
+                            continue;
+                        }
+                        write(1, read_buffer, sizeof(read_buffer));
+                        memset(write_buffer, 0, sizeof(write_buffer));
+                        read(0, write_buffer, sizeof(write_buffer));
+                        send(sd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
+                        memset(read_buffer, 0, sizeof(read_buffer));
+                        recv(sd, read_buffer, sizeof(read_buffer), 0);
+                        if(check(read_buffer) == -1)
+                        {
+                            write(1, "Failed to change password!\n", strlen("Failed to change password!\n"));
+                            continue;
                         }
                     }
                     else if((int)write_buffer[0] == 49 && (int)write_buffer[1] == 10)
