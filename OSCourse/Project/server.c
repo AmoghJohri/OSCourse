@@ -247,6 +247,7 @@ int augment_balance(float new, int id) // takes in the amount which is to be add
 
         if(read(fd, pointer, SIZE) != SIZE)
         {
+            free(pointer);
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -313,6 +314,7 @@ int change_password(char* new, int id) // takes the new password and the associa
 
     int fd = open("pds.bin", O_RDWR); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
+      free(pointer);
       write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
       exit(1);
     }
@@ -332,6 +334,7 @@ int change_password(char* new, int id) // takes the new password and the associa
 
         if(read(fd, pointer, SIZE) != SIZE)
         {
+            free(pointer);
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -390,6 +393,7 @@ int delete_account(int id) // takes an id and deletes the account corresponding 
 
     int fd = open("pds.bin", O_RDWR); /* Open the file for writing */
     if (fd == -1) { /* In the case of error, open returns -1 ! */
+      free(pointer);
       write(2, "Error: Database Failed To Open!\n", strlen("Error: Database Failed To Open!\n"));
       exit(1);
     }
@@ -409,6 +413,7 @@ int delete_account(int id) // takes an id and deletes the account corresponding 
 
         if(read(fd, pointer, SIZE) != SIZE)
         {
+            free(pointer);
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -486,6 +491,7 @@ int add_account(account_t* new) // takes the account information and adds it int
 
         if(read(fd, pointer, SIZE) != SIZE)
         {
+            free(pointer);
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }

@@ -1,3 +1,7 @@
+/*
+The is just to setup the initial database.
+*/
+
 #include <fcntl.h>  
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,10 +9,10 @@
 #include <sys/stat.h>  
 #include <sys/types.h>  
  
-#define LEN 1024
-#define ACC 5
+#define LEN 1024 // length of the password
+#define ACC 5 // maximum number of ids permitted in a joint account
  
-typedef struct account
+typedef struct account // this is used to store all the information regarding an account
 {
     unsigned int this_id;
     unsigned int id[ACC];
@@ -16,15 +20,15 @@ typedef struct account
     float balance;
 }   account_t;
 
-#define SIZE sizeof(account_t)
+#define SIZE sizeof(account_t) // size of the account datastructure
 
-void strreverse(char* begin, char* end) {
+void strreverse(char* begin, char* end) { // function to reverse a string
 	char aux;
 	while(end>begin)
 		aux=*end, *end--=*begin, *begin++=aux;
 }
 	
-void itoa(int value, char* str, int base) {
+void itoa(int value, char* str, int base) { // function to get the string for an integer
 	static char num[] = "0123456789abcdefghijklmnopqrstuvwxyz";
 	char* wstr=str;
 	int sign;
@@ -59,7 +63,7 @@ int print_id(unsigned int* arr)
   return 0;
 }
 
-void print_account_details(void)
+void print_account_details(void) // prints all the account details
 {
   int fd = open("pds.bin", O_RDONLY); /* Open the file for writing */
   if (fd == -1) { /* In the case of error, open returns -1 ! */
@@ -119,6 +123,7 @@ int main() {
         if(write(fd, dummy_account, SIZE) != SIZE)
         {
         printf("Error: Failed To Write!\n"); 
+        free(dummy_account);
         exit(1);
         }
     }
@@ -135,6 +140,7 @@ int main() {
         if(write(fd, dummy_account, SIZE) != SIZE)
         {
           printf("Error: Failed To Write!\n"); 
+          free(dummy_account);
           exit(1);
         }
     }
