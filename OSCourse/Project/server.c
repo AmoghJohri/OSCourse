@@ -11,11 +11,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <sys/select.h>
+#include <sys/time.h>
 #include "setup.h"
 
 pthread_mutex_t mutex_lock1; 
 pthread_mutex_t mutex_lock2; 
 
+int server_on = 1;
 int number_of_accounts = -1;
 int open_connections[1024] = {0};
 
@@ -606,7 +609,7 @@ void* login(void* nsd_)
         {
             while(1)
             {
-                if(open_id != 1)// this is a single-user account
+                if(open_id != 1)// this is a user account
                 {
                     memset(read_buffer, 0, sizeof(read_buffer));
                     memset(write_buffer, 0, sizeof(write_buffer));
@@ -710,7 +713,7 @@ void* login(void* nsd_)
                     account_t* aux = (account_t*)calloc(1, sizeof(account_t));
                     memset(read_buffer, 0, sizeof(read_buffer));
                     memset(write_buffer, 0, sizeof(write_buffer));
-                    strcpy(write_buffer, "Press 1 To Add an Account\nPress 2 To Delete an Account\nPress 3 To Get Account Details\nPress 4 To Modify Account Password\nPress 5 To Exit\nEnter your option: ");
+                    strcpy(write_buffer, "Press 1 To Add an Account\nPress 2 To Delete an Account\nPress 3 To Get Account Details\nPress 4 To Modify Account Password\nPress 5 To Exit\nPress 6 To Shut the Server Down\nEnter your option: ");
                     send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                     recv(nsd, read_buffer, sizeof(read_buffer), 0);
                     if((int)read_buffer[0] == 53 && (int)read_buffer[1] == 10)
@@ -893,6 +896,18 @@ void* login(void* nsd_)
                         memset(write_buffer, 0, sizeof(write_buffer));
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);       
                     }
+                    else if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10)
+                    {
+                        server_on = 0;
+                        int sd = socket(AF_INET, SOCK_STREAM, 0);
+                        struct in_addr inadr;
+                        struct sockaddr_in serv, cli;
+                        serv.sin_family = AF_INET;
+                        serv.sin_addr = (inadr);
+                        serv.sin_port = htons(6000);
+                        connect(sd, (void*)&serv, sizeof(cli));
+                        return NULL;
+                    }
                     else
                     {
                         memset(write_buffer, 0, sizeof(write_buffer));
@@ -904,8 +919,6 @@ void* login(void* nsd_)
         }
     }
 }
-
-
 
 int main()
 {   
@@ -963,27 +976,32 @@ int main()
     } 
     pds_init();
 
-    unsigned long thread_id = 0;
+    pthread_t thread_id[1024];
+    int counter = 0;
     int nsd = 0;
 
-
     while(1)
-    {   
+    {            
         nsd = accept(sd, (void*)&cli, (socklen_t*)&addrlen);
+        if(server_on == 0)
+        {
+            close(sd);
+            break;
+        }
         if(nsd == -1)
         {
             printf("Error: Connection Failed To Establish!\n");
         }
         else
         {
-            // printf("Connected to client: %s\n",inet_ntoa(cli.sin_addr));
-            thread_id += 1;
-            pthread_create( &thread_id , NULL ,  login , (void*) &nsd);
+            pthread_create( &thread_id[counter] , NULL ,  login , (void*) &nsd);
+            counter++;
         }
     }   
-    for(unsigned long int i = 1; i < thread_id; i++)
+    
+    for(unsigned long int i = 1; i < counter; i++)
     {
-        pthread_join(i, NULL); // waiting for all the active threads
+        pthread_join(thread_id[i], NULL); // waiting for all the active threads
     }
     shutdown(nsd, SHUT_RDWR);
     

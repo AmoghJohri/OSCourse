@@ -236,8 +236,14 @@ int main()
                     write(1, read_buffer, sizeof(read_buffer));
                     read(0, write_buffer, sizeof(write_buffer));
                     send(sd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
-                    if((int)write_buffer[0] == 53 && (int)write_buffer[1] == 10)
+                    if(((int)write_buffer[0] == 53) && (int)write_buffer[1] == 10)
                     {
+                        printf("Closing the connection...\n");
+                        exit(-1);
+                    }
+                    else if((int)write_buffer[0] == 54 && (int)write_buffer[1] == 10)
+                    {
+                        send(sd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                         printf("Closing the connection...\n");
                         exit(-1);
                     }
