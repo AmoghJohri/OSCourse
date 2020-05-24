@@ -898,14 +898,16 @@ void* login(void* nsd_)
                     }
                     else if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10)
                     {
-                        server_on = 0;
                         int sd = socket(AF_INET, SOCK_STREAM, 0);
                         struct in_addr inadr;
                         struct sockaddr_in serv, cli;
                         serv.sin_family = AF_INET;
                         serv.sin_addr = (inadr);
                         serv.sin_port = htons(6000);
-                        connect(sd, (void*)&serv, sizeof(cli));
+                        server_on = 0;
+                        if(connect(sd, (void*)&serv, sizeof(cli)) == -1)
+                            server_on = 1;
+                        close_con(1);
                         return NULL;
                     }
                     else
@@ -985,7 +987,6 @@ int main()
         nsd = accept(sd, (void*)&cli, (socklen_t*)&addrlen);
         if(server_on == 0)
         {
-            close(sd);
             break;
         }
         if(nsd == -1)
@@ -998,8 +999,7 @@ int main()
             counter++;
         }
     }   
-    
-    for(unsigned long int i = 1; i < counter; i++)
+    for(unsigned long int i = 0; i < counter; i++)
     {
         pthread_join(thread_id[i], NULL); // waiting for all the active threads
     }
