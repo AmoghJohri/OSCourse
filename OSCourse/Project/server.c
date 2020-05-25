@@ -57,27 +57,28 @@ int open_con(int id) // this takes in an account id and enters its value in the 
     {
         if(open_connections[i] == 0)
         {
-            pthread_mutex_lock(&mutex_lock1); 
             open_connections[i] = id;
-            pthread_mutex_unlock(&mutex_lock1); 
+            
             return 0;
         }
     }
+    
     return 1;
 }
 
 int close_con(int id) // this takes in an accunt_id and removes its value from the open_connections indicating that the account is now logging out
 {
+    
     for(int i = 0; i < 1024; i++)
     {
         if(open_connections[i] == id)
-        {
-            pthread_mutex_lock(&mutex_lock1); 
+        {      
             open_connections[i] = 0;
-            pthread_mutex_unlock(&mutex_lock1); 
+            
             return 0;
         }
     }
+    
     return 1;
 }
 
@@ -86,10 +87,29 @@ int is_open(int id) // this takes in an account_id and checks whether it is alre
     for(int i = 0; i < 1024; i++)
     {
         if(open_connections[i] == id)
+        {
+            
             return 0;
+        }
     }
+    
     return 1;
 }
+
+int access_connection(int id, int what)
+{
+    int out = -1;
+    pthread_mutex_lock(&mutex_lock1);
+    if(what == 1)
+        out = open_con(id);
+    else if(what == -1)
+        out = close_con(id);
+    else 
+        out = is_open(id);
+    pthread_mutex_unlock(&mutex_lock1);
+    return out;
+}
+
 
 void pds_init(void) // this initializes our personal data-store. It creates an admin account and 20 other accounts in which 10 are single-user accounts and 20 are joint-user accounts
 {
@@ -634,10 +654,10 @@ void* login(void* nsd_) // this is the main function, everything that the server
             get_info(atoi(read_buffer), &pointer);
             if(pointer->this_id == 0)            // login id was not found
                 tag = -1;
-            if(is_open(pointer->this_id) == 0)   // login id added to the array of open connections
+            if(access_connection(pointer->this_id, 0) == 0)   // login id added to the array of open connections
             {
                 if(tag == -1)
-                    close_con(pointer->this_id); // if the login id was not found, it is removed from the set of open connections
+                    access_connection(pointer->this_id, -1); // if the login id was not found, it is removed from the set of open connections
                 else                             // the login is already open
                     tag = -2;
             }
@@ -671,7 +691,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                 recv(nsd, read_buffer, sizeof(read_buffer), 0); // the password is received by the server
                 get_info(open_id, &pointer);                    // this is performed in case the password has been changed by other users in a joint account scenario (or changed by the admin)
                 tag = match_password(pointer, read_buffer);     // matching the password
-                if(is_open(open_id) == 0)
+                if(access_connection(open_id, 0) == 0)
                     tag = -2;                                   // if during this time, the same id got opened from another client process, we raise an error
                 i = i + 1;
             }
@@ -696,7 +716,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
             }
             else               // we reach here after a successful login
             {
-                open_con(open_id);
+                access_connection(open_id, 1);
                 strcpy(write_buffer, "Login Successful!\n");
                 send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);
                 i = i + 1;
@@ -719,7 +739,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
 
                     if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10) // this input indicates that the user wants to logout
                     {
-                        close_con(open_id);
+                        access_connection(open_id, -1);
                         close(nsd);
                         
                         return NULL;
@@ -824,7 +844,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                     recv(nsd, read_buffer, sizeof(read_buffer), 0);
                     if((int)read_buffer[0] == 53 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to logout
                     {
-                        close_con(open_id);
+                        access_connection(open_id, -1);
                         close(nsd);
                         
                         return NULL;
@@ -885,7 +905,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                             int tag = 0;
                             while(array[counter] != 0)
                             {
-                                while(is_open(array[counter]) == 0)
+                                while(access_connection(array[counter], 0) == 0)
                                     tag = 1;
                                 counter = counter + 1;
                             }
@@ -908,7 +928,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                             int counter = 0;
                             while(array[counter] != 0)
                             {
-                                close_con(array[counter]);
+                                access_connection(array[counter], -1);
                                 counter ++;
                             }
 
@@ -1036,7 +1056,7 @@ void* login(void* nsd_) // this is the main function, everything that the server
                         if(val == -1)
                             server_on = 1;
                         close(nsd);
-                        close_con(1);
+                        access_connection(1, -1);
                         return NULL;
                     }
                     else // this indicates an invalid input and in this case the admin is prompted to provide an input again
