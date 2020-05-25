@@ -532,6 +532,8 @@ int add_account(account_t* new) // takes the account information and adds it int
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
+        if(i == 0)
+            continue;
         unsigned int* arr = (pointer)->id;
         int counter = 0;
         while(arr[counter] != 0)
