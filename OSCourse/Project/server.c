@@ -63,7 +63,6 @@ int open_con(int id) // this takes in an account id and enters its value in the 
             return 0;
         }
     }
-    
     return 1;
 }
 
@@ -253,8 +252,11 @@ int augment_balance(float new, int id) // takes in the amount which is to be add
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
-        if(read(fd, pointer, SIZE) != SIZE)
-        {    
+        int val = read(fd, pointer, SIZE);
+        if(val != SIZE)
+        {
+            if(val == 0)
+                continue;   
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -339,9 +341,11 @@ int change_password(char* new, int id) // takes the new password and the associa
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
-        if(read(fd, pointer, SIZE) != SIZE)
+        int val = read(fd, pointer, SIZE);
+        if(val != SIZE)
         {
-            
+            if(val == 0)
+                continue; 
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -370,13 +374,13 @@ int change_password(char* new, int id) // takes the new password and the associa
     {
         int pos = lseek(fd, -1*SIZE, SEEK_CUR); // move one space back
         {
-            struct flock lock2; // putting a read lock on the file
+            struct flock lock2; // putting a write lock on the record
              /* Initialize the flock structure. */
             memset (&lock2, 0, sizeof(lock));
             lock2.l_type = F_WRLCK;
-            /* Place a write lock on the file. */
+            /* Place a write lock on the record. */
             lock2.l_whence = SEEK_SET; // offset base is start of the file
-            lock2.l_start = pos;         // starting offset is zero
+            lock2.l_start = pos;         // starting offset is for the current record
             lock2.l_len = SIZE; 
             fcntl (fd, F_SETLKW, &lock2);
             write(fd, pointer, SIZE);
@@ -419,9 +423,11 @@ int delete_account(int id) // takes an id and deletes the account corresponding 
         if(tag != 0) // already found the accont so we do not want to be reading any further
             break;
 
-        if(read(fd, pointer, SIZE) != SIZE)
+        int val = read(fd, pointer, SIZE);
+        if(val != SIZE)
         {
-            
+            if(val == 0)
+                continue; 
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
@@ -518,8 +524,11 @@ int add_account(account_t* new) // takes the account information and adds it int
     int iter_total = number_of_accounts + 1;
     for(int i = 0; i < iter_total; i++)
     {
-        if(read(fd, pointer, SIZE) != SIZE)
-        {  
+        int val = read(fd, pointer, SIZE);
+        if(val != SIZE)
+        {
+            if(val == 0)
+                continue;
             write(2, "Error: Read Failed\n", strlen("Error: Read Failed\n"));
             exit(1);
         }
