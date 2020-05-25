@@ -53,35 +53,32 @@ void itoa(int value, char* str, int base) { // converts an integer into a string
 // functions to access the open_connections global variable, this has to be shared between multiple threads and hence, appropriate locking has been defined for reading
 int open_con(int id) // this takes in an account id and enters its value in the open_connections array indicating that the account id is active
 {
-    pthread_mutex_lock(&mutex_lock1); 
     for(int i = 0; i < 1024; i++)
     {
         if(open_connections[i] == 0)
         {
-            
+            pthread_mutex_lock(&mutex_lock1); 
             open_connections[i] = id;
-            
+            pthread_mutex_unlock(&mutex_lock1); 
             return 0;
         }
     }
-    pthread_mutex_unlock(&mutex_lock1); 
+    
     return 1;
 }
 
 int close_con(int id) // this takes in an accunt_id and removes its value from the open_connections indicating that the account is now logging out
 {
-    pthread_mutex_lock(&mutex_lock1); 
     for(int i = 0; i < 1024; i++)
     {
         if(open_connections[i] == id)
         {
-            
+            pthread_mutex_lock(&mutex_lock1); 
             open_connections[i] = 0;
-            
+            pthread_mutex_unlock(&mutex_lock1); 
             return 0;
         }
     }
-    pthread_mutex_unlock(&mutex_lock1); 
     return 1;
 }
 
