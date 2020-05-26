@@ -17,14 +17,13 @@
 
 #include "setup.h"
 
-// Defining locks on the number_of_accounts and open_connections variables. These are to be shared between different threads
+// Defining locks on the open_connections variable. This is to be shared between different threads
 pthread_mutex_t mutex_lock1; 
-pthread_mutex_t mutex_lock2; 
 
 // no lock has been defined on server_on global variable as only the admin has access to it
 int server_on               = 1; // this indicates whether the server is switched on of off; if server_on == 0, the server does not accept any further connections
+int number_of_accounts      = 0; // this indicates the number of accounts present in the database
 
-int number_of_accounts      = 0;
 int open_connections[1024]  = {0}; // this indicates the account id's which are logged in, a total of 1024 connections are permitted here
 
 // auxillary functions - do not provide much direct functionality to the project
@@ -96,6 +95,7 @@ int is_open(int id) // this takes in an account_id and checks whether it is alre
     return 1;
 }
 
+// routing all the functions to access open_connections from here so that all of them can be simultaneously mutex-locked
 int access_connection(int id, int what)
 {
     int out = -1;
@@ -110,7 +110,6 @@ int access_connection(int id, int what)
     return out;
 }
 
-
 void pds_init(void) // this initializes our personal data-store. It creates an admin account and 20 other accounts in which 10 are single-user accounts and 20 are joint-user accounts
 {
     int fd = open("pds.bin", O_RDONLY); /* Open the file for writing */
@@ -124,9 +123,7 @@ void pds_init(void) // this initializes our personal data-store. It creates an a
       write(2, "Error: Database Failed To Read!\n", strlen("Error: Database Failed To Read!\n"));
       exit(1);
     }
-    pthread_mutex_lock(&mutex_lock2); 
     number_of_accounts = pointer->balance - 1;
-    pthread_mutex_unlock(&mutex_lock2); 
     
     if(lseek(fd, 0, SEEK_SET) != 0)
     {
@@ -312,17 +309,17 @@ int augment_balance(float new, int id) // takes in the amount which is to be add
     {
         int pos = lseek(fd, -1*SIZE, SEEK_CUR); // move one space back
         {
-            struct flock lock2; // putting a read lock on the file
+            struct flock lock2; // putting a write lock on the record
              /* Initialize the flock structure. */
             memset (&lock2, 0, sizeof(lock));
             lock2.l_type = F_WRLCK;
-            /* Place a write lock on the file. */
+            /* Place a write lock on the record */
             lock2.l_whence = SEEK_SET; // offset base is start of the file
-            lock2.l_start = pos;         // starting offset is zero
+            lock2.l_start = pos;         // starting offset is position of the record
             lock2.l_len = SIZE; 
             fcntl (fd, F_SETLKW, &lock2);
             write(fd, pointer, SIZE);
-            // unlocking the file
+            // unlocking the record
             lock2.l_type = F_UNLCK;
             fcntl (fd, F_SETLKW, &lock2);
         }
@@ -475,13 +472,13 @@ int delete_account(int id) // takes an id and deletes the account corresponding 
     {
         int pos = lseek(fd, -1*SIZE, SEEK_CUR); // move one space back
         {
-            struct flock lock2; // putting a read lock on the file
+            struct flock lock2; // putting a write lock on the record
              /* Initialize the flock structure. */
             memset (&lock2, 0, sizeof(lock));
             lock2.l_type = F_WRLCK;
             /* Place a write lock on the file. */
             lock2.l_whence = SEEK_SET; // offset base is start of the file
-            lock2.l_start = pos;         // starting offset is zero
+            lock2.l_start = pos;         // starting offset is position of the record
             lock2.l_len = SIZE; 
             fcntl (fd, F_SETLKW, &lock2);
             memset(pointer, 0, sizeof(pointer));
@@ -489,9 +486,7 @@ int delete_account(int id) // takes an id and deletes the account corresponding 
             // unlocking the file
             lock2.l_type = F_UNLCK;
             fcntl (fd, F_SETLKW, &lock2);
-            pthread_mutex_lock(&mutex_lock2); 
             number_of_accounts --;
-            pthread_mutex_unlock(&mutex_lock2);
 
             lseek(fd, 0, SEEK_SET);
             read(fd, pointer, SIZE);
@@ -591,13 +586,13 @@ int add_account(account_t* new) // takes the account information and adds it int
     {
         int pos = lseek(fd, -1*SIZE, SEEK_CUR); // move one space back
         {
-            struct flock lock2; // putting a read lock on the file
+            struct flock lock2; // putting a write lock on the record
              /* Initialize the flock structure. */
             memset (&lock2, 0, sizeof(lock));
             lock2.l_type = F_WRLCK;
             /* Place a write lock on the file. */
             lock2.l_whence = SEEK_SET; // offset base is start of the file
-            lock2.l_start = pos;         // starting offset is zero
+            lock2.l_start = pos;         // starting offset is position of the record
             lock2.l_len = SIZE; 
             fcntl (fd, F_SETLKW, &lock2);
             write(fd, new, SIZE);
@@ -620,9 +615,7 @@ int add_account(account_t* new) // takes the account information and adds it int
     write(fd, pointer, SIZE);
     lock2.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock2);
-    pthread_mutex_lock(&mutex_lock2); 
     number_of_accounts ++;
-    pthread_mutex_unlock(&mutex_lock2); 
     // unlocking the file
     lock.l_type = F_UNLCK;
     fcntl (fd, F_SETLKW, &lock);
@@ -1035,11 +1028,12 @@ void* login(void* nsd_) // this is the main function, everything that the server
                             if((int)read_buffer[i] == 10)
                                 read_buffer[i] = (char)0;
                         }
-                        if(change_password(read_buffer, aux->this_id) == 0)
-                            strcpy(write_buffer, "1");
-                        else
-                            strcpy(write_buffer, "0");
                         memset(write_buffer, 0, sizeof(write_buffer));
+                        if(change_password(read_buffer, aux->this_id) == 0)
+                            strcpy(write_buffer, "0");
+                        else
+                            strcpy(write_buffer, "1");
+                        
                         send(nsd, write_buffer, sizeof(write_buffer), MSG_CONFIRM);       
                     }
                     else if((int)read_buffer[0] == 54 && (int)read_buffer[1] == 10) // this input indicates that the admin wishes to close the server
@@ -1119,10 +1113,6 @@ int main()
         write(2, "\n mutex init has failed\n", strlen("\n mutex init has failed\n")); 
         exit(1); 
     }  
-    if (pthread_mutex_init(&mutex_lock2, NULL) != 0) { 
-        write(2, "\n mutex init has failed\n", strlen("\n mutex init has failed\n")); 
-        exit(1); 
-    } 
     pds_init();
 
     pthread_t thread_id[1024]; // maximum number of thread supported
@@ -1156,7 +1146,6 @@ int main()
     }
     shutdown(nsd, SHUT_RDWR); // shutting the server down
     
-    pthread_mutex_destroy(&mutex_lock1);
-    pthread_mutex_destroy(&mutex_lock2);  
+    pthread_mutex_destroy(&mutex_lock1); 
     return 0;
 }  
